@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remote Keyboard Dashboard</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            background: #1e1e1e;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            max-width: 500px;
+            width: 90%;
+        }
+        h1 { margin-bottom: 10px; }
+        p { color: #aaa; margin-bottom: 30px; }
+        .qr-code {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        .qr-code img {
+            display: block;
+            width: 200px;
+            height: 200px;
+        }
+        .status-box {
+            background: #252525;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: left;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        .status-item:last-child { margin-bottom: 0; }
+        .label { color: #888; }
+        .value { color: #fff; font-weight: bold; }
+        .connected { color: #4caf50; }
+        .disconnected { color: #f44336; }
+        
+        .devices-list {
+            margin-top: 20px;
+            text-align: left;
+        }
+        .device {
+            background: #333;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 5px;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Remote Keyboard</h1>
+        <p>Scan to connect securely</p>
+        
+        <div class="qr-code">
+            <img src="{{ qr_code_url }}" alt="QR Code">
+        </div>
+
+        <div class="status-box">
+            <div class="status-item">
+                <span class="label">Status:</span>
+                <span class="value" id="server-status">Running</span>
+            </div>
+            <div class="status-item">
+                <span class="label">Address:</span>
+                <span class="value">{{ host_url }}</span>
+            </div>
+        </div>
+
+        <div class="devices-list">
+            <div class="label">Connected Devices:</div>
+            <div id="devices">
+                <!-- Devices will appear here -->
+                <div class="device" style="color: #666; font-style: italic;" id="no-devices">No devices connected</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+
+        socket.on('connect', () => {
+            console.log('Dashboard connected to server');
+        });
+
+        socket.on('update_devices', (devices) => {
+            const list = document.getElementById('devices');
+            list.innerHTML = '';
+            if (devices.length === 0) {
+                list.innerHTML = '<div class="device" style="color: #666; font-style: italic;">No devices connected</div>';
+                return;
+            }
+            devices.forEach(dev => {
+                const div = document.createElement('div');
+                div.className = 'device';
+                div.innerHTML = `<span>${dev.ip}</span> <span class="connected">● Connected</span>`;
+                list.appendChild(div);
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Remote Keyboard</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            touch-action: none; /* Prevent scrolling */
+        }
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            gap: 10px;
+        }
+        .tabs {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background: #333;
+            border-radius: 20px;
+            font-size: 14px;
+            color: #aaa;
+            cursor: pointer;
+        }
+        .tab.active {
+            background: #007bff;
+            color: #fff;
+        }
+        
+        /* Keyboard View */
+        #keyboard-view {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            gap: 10px;
+        }
+        #input-area {
+            width: 100%;
+            height: 100px;
+            background-color: #1e1e1e;
+            border: 2px solid #333;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 18px;
+            padding: 10px;
+            box-sizing: border-box;
+            outline: none;
+        }
+        #input-area:focus { border-color: #007bff; }
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            flex: 1;
+        }
+        button {
+            background-color: #333;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            touch-action: manipulation;
+        }
+        button:active { background-color: #555; }
+
+        /* Trackpad View */
+        #trackpad-view {
+            display: none;
+            flex: 1;
+            background: #222;
+            border-radius: 10px;
+            border: 1px solid #444;
+            position: relative;
+            touch-action: none;
+        }
+        .mouse-buttons {
+            display: flex;
+            height: 60px;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .mouse-btn {
+            flex: 1;
+            background: #333;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        .mouse-btn:active { background: #555; }
+
+        .status {
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('keyboard')">Keyboard</div>
+            <div class="tab" onclick="switchTab('trackpad')">Trackpad</div>
+        </div>
+
+        <div id="keyboard-view">
+            <textarea id="input-area" placeholder="Type here..."></textarea>
+            <div class="controls">
+                <button onclick="sendPaste()" style="background-color: #007bff; grid-column: span 2;">Paste to PC</button>
+                <button onclick="clearInput()" style="background-color: #dc3545;">Clear</button>
+                <button onclick="sendKey('backspace')">⌫</button>
+                <button onclick="sendKey('enter')">↵</button>
+                <button onclick="sendKey('space')">Space</button>
+                <button onclick="sendKey('capslock')">Caps</button>
+                <button onclick="sendKey('delete')">Del</button>
+                <button onclick="sendKey('tab')">Tab</button>
+                
+                <button onclick="sendKey('up')">↑</button>
+                <button onclick="sendKey('left')">←</button>
+                <button onclick="sendKey('down')">↓</button>
+                <button onclick="sendKey('right')">→</button>
+                
+                <button onclick="sendKey('home')">Home</button>
+                <button onclick="sendKey('end')">End</button>
+                <button onclick="sendKey('pgup')">PgUp</button>
+                <button onclick="sendKey('pgdn')">PgDn</button>
+                <button onclick="sendKey('esc')">Esc</button>
+                <button onclick="sendKey('win')">Win</button>
+            </div>
+        </div>
+
+        <div id="trackpad-view">
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #444; pointer-events: none;">
+                Touch & Drag
+            </div>
+        </div>
+        <div class="mouse-buttons" id="mouse-buttons" style="display: none;">
+            <div class="mouse-btn" onclick="sendClick('left')">Left</div>
+            <div class="mouse-btn" onclick="sendClick('right')">Right</div>
+        </div>
+
+        <div class="status" id="status">Disconnected</div>
+    </div>
+
+    <script>
+        // Get token from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+
+        if (!token) {
+            document.body.innerHTML = '<h2 style="color:red; text-align:center; margin-top:50px;">Access Denied: No Token</h2>';
+            throw new Error("No token");
+        }
+
+        const socket = io({ query: { token: token } });
+        const statusEl = document.getElementById('status');
+
+        socket.on('connect', () => {
+            statusEl.textContent = 'Connected';
+            statusEl.style.color = '#4caf50';
+        });
+
+        socket.on('disconnect', () => {
+            statusEl.textContent = 'Disconnected';
+            statusEl.style.color = '#f44336';
+        });
+
+        // Tabs
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            if (tab === 'keyboard') {
+                document.getElementById('keyboard-view').style.display = 'flex';
+                document.getElementById('trackpad-view').style.display = 'none';
+                document.getElementById('mouse-buttons').style.display = 'none';
+            } else {
+                document.getElementById('keyboard-view').style.display = 'none';
+                document.getElementById('trackpad-view').style.display = 'block';
+                document.getElementById('mouse-buttons').style.display = 'flex';
+            }
+        }
+
+        // Keyboard
+        const inputArea = document.getElementById('input-area');
+        
+        // We want to keep text in the box so user sees what they typed.
+        // But we only want to send the *new* character.
+        // Or we can just clear it on Enter?
+        // Let's try: Keep text, but if they backspace, we handle it.
+        
+        inputArea.addEventListener('input', (e) => {
+            if (e.inputType === 'insertText' && e.data) {
+                // Send just the new character
+                socket.emit('type_text', { text: e.data });
+            } else if (e.inputType === 'deleteContentBackward') {
+                socket.emit('press_key', { key: 'backspace' });
+            } else if (e.inputType === 'insertLineBreak') {
+                 socket.emit('press_key', { key: 'enter' });
+                 inputArea.value = ''; // Clear on Enter
+            }
+            
+            // Do NOT clear inputArea.value here for normal typing, so user sees the text.
+            // Optional: Clear it if it gets too long?
+            if (inputArea.value.length > 1000) {
+                inputArea.value = '';
+            }
+        });
+        
+        function clearInput() {
+            inputArea.value = '';
+            inputArea.focus();
+        }
+        
+        // Handle Enter key specially if needed (e.g. to clear box)
+        inputArea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                // e.preventDefault(); // If we want to prevent newline in box
+                // socket.emit('press_key', { key: 'enter' });
+                // Let's let the input event handle it via insertLineBreak or just let it be.
+                // Actually, mobile keyboards often send 'Go' or 'Enter' as a keydown or input type.
+            }
+        });
+
+        function sendKey(key) { 
+            socket.emit('press_key', { key: key }); 
+            if (navigator.vibrate) navigator.vibrate(10);
+        }
+
+        function sendPaste() {
+            const text = inputArea.value;
+            if (text) {
+                socket.emit('paste_text', { text: text });
+                if (navigator.vibrate) navigator.vibrate(20);
+                // Optional: clear after paste? Or keep it?
+                // inputArea.value = ''; 
+            }
+        }
+
+        // Trackpad
+        const trackpad = document.getElementById('trackpad-view');
+        let lastX = 0, lastY = 0;
+        let isTouching = false;
+
+        trackpad.addEventListener('touchstart', (e) => {
+            isTouching = true;
+            lastX = e.touches[0].clientX;
+            lastY = e.touches[0].clientY;
+            e.preventDefault();
+        });
+
+        trackpad.addEventListener('touchmove', (e) => {
+            if (!isTouching) return;
+            const x = e.touches[0].clientX;
+            const y = e.touches[0].clientY;
+            const dx = (x - lastX) * 2; // Sensitivity
+            const dy = (y - lastY) * 2;
+            
+            socket.emit('move_mouse', { dx: dx, dy: dy });
+            
+            lastX = x;
+            lastY = y;
+            e.preventDefault();
+        });
+
+        trackpad.addEventListener('touchend', (e) => {
+            isTouching = false;
+            e.preventDefault();
+        });
+
+        function sendClick(btn) {
+            socket.emit('click_mouse', { button: btn });
+        }
+
+        // Prevent defaults
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                btn.click();
+            });
+        });
+    </script>
+</body>
+</html>
