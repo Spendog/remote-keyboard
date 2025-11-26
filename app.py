@@ -211,7 +211,10 @@ def handle_press_key(data):
         return
     key = data.get('key')
     if key:
-        pyautogui.press(key)
+        if key == 'undo':
+            pyautogui.hotkey('ctrl', 'z')
+        else:
+            pyautogui.press(key)
 
 @socketio.on('move_mouse')
 def handle_move_mouse(data):
@@ -227,6 +230,18 @@ def handle_click_mouse(data):
         return
     button = data.get('button', 'left')
     pyautogui.click(button=button)
+
+@socketio.on('hold_mouse')
+def handle_hold_mouse(data):
+    if not is_trusted(request):
+        return
+    button = data.get('button', 'left')
+    action = data.get('action', 'down')
+    
+    if action == 'down':
+        pyautogui.mouseDown(button=button)
+    elif action == 'up':
+        pyautogui.mouseUp(button=button)
 
 def start_server():
     load_config()
@@ -263,6 +278,10 @@ def start_server():
 
     print(f"Starting secure server on port 5000...")
     try:
+        # Use ssl_context for Werkzeug (default dev server) compatibility
+        socketio.run(app, host='0.0.0.0', port=5000, ssl_context=(cert_path, key_path), allow_unsafe_werkzeug=True)
+    except TypeError:
+        # Fallback if using eventlet/gevent which might prefer keyfile/certfile
         socketio.run(app, host='0.0.0.0', port=5000, keyfile=key_path, certfile=cert_path)
     except Exception as e:
         print(f"Error starting server: {e}")

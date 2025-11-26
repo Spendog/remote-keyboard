@@ -1,0 +1,8 @@
+flask
+flask-socketio
+pyautogui
+qrcode[pil]
+pystray
+pyperclip
+pyopenssl
+pillow

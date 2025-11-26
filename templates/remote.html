@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -18,8 +19,10 @@
             height: 100vh;
             margin: 0;
             overflow: hidden;
-            touch-action: none; /* Prevent scrolling */
+            touch-action: none;
+            /* Prevent scrolling */
         }
+
         .container {
             flex: 1;
             display: flex;
@@ -27,12 +30,14 @@
             padding: 10px;
             gap: 10px;
         }
+
         .tabs {
             display: flex;
             justify-content: center;
             gap: 10px;
             margin-bottom: 10px;
         }
+
         .tab {
             padding: 10px 20px;
             background: #333;
@@ -41,11 +46,12 @@
             color: #aaa;
             cursor: pointer;
         }
+
         .tab.active {
             background: #007bff;
             color: #fff;
         }
-        
+
         /* Keyboard View */
         #keyboard-view {
             display: flex;
@@ -53,6 +59,7 @@
             flex: 1;
             gap: 10px;
         }
+
         #input-area {
             width: 100%;
             height: 100px;
@@ -65,13 +72,18 @@
             box-sizing: border-box;
             outline: none;
         }
-        #input-area:focus { border-color: #007bff; }
+
+        #input-area:focus {
+            border-color: #007bff;
+        }
+
         .controls {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(2, 1fr);
             gap: 8px;
             flex: 1;
         }
+
         button {
             background-color: #333;
             color: #fff;
@@ -80,7 +92,10 @@
             font-size: 16px;
             touch-action: manipulation;
         }
-        button:active { background-color: #555; }
+
+        button:active {
+            background-color: #555;
+        }
 
         /* Trackpad View */
         #trackpad-view {
@@ -92,12 +107,14 @@
             position: relative;
             touch-action: none;
         }
+
         .mouse-buttons {
             display: flex;
             height: 60px;
             gap: 10px;
             margin-top: 10px;
         }
+
         .mouse-btn {
             flex: 1;
             background: #333;
@@ -107,7 +124,10 @@
             justify-content: center;
             font-weight: bold;
         }
-        .mouse-btn:active { background: #555; }
+
+        .mouse-btn:active {
+            background: #555;
+        }
 
         .status {
             text-align: center;
@@ -117,6 +137,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="tabs">
@@ -125,36 +146,37 @@
         </div>
 
         <div id="keyboard-view">
-            <textarea id="input-area" placeholder="Type here..."></textarea>
-            <div class="controls">
-                <button onclick="sendPaste()" style="background-color: #007bff; grid-column: span 2;">Paste to PC</button>
-                <button onclick="clearInput()" style="background-color: #dc3545;">Clear</button>
+            <textarea id="input-area" placeholder="Type here..." autocomplete="off" autocorrect="off"
+                autocapitalize="off" spellcheck="false"></textarea>
+            <div class="controls" style="grid-template-columns: repeat(2, 1fr);">
+                <!-- Row 1: Paste and Clear (Nested for sizing) -->
+                <div style="grid-column: span 2; display: flex; gap: 8px;">
+                    <button onclick="sendPaste()" style="background-color: #007bff; flex: 1;">Paste</button>
+                    <button onclick="clearInput()"
+                        style="background-color: #dc3545; width: 80px; font-size: 14px;">Clear</button>
+                </div>
+
+                <!-- Row 2 -->
+                <button onclick="sendKey('undo')" style="background-color: #ff9800;">Undo</button>
                 <button onclick="sendKey('backspace')">⌫</button>
-                <button onclick="sendKey('enter')">↵</button>
-                <button onclick="sendKey('space')">Space</button>
-                <button onclick="sendKey('capslock')">Caps</button>
-                <button onclick="sendKey('delete')">Del</button>
-                <button onclick="sendKey('tab')">Tab</button>
-                
-                <button onclick="sendKey('up')">↑</button>
-                <button onclick="sendKey('left')">←</button>
-                <button onclick="sendKey('down')">↓</button>
-                <button onclick="sendKey('right')">→</button>
-                
-                <button onclick="sendKey('home')">Home</button>
-                <button onclick="sendKey('end')">End</button>
-                <button onclick="sendKey('pgup')">PgUp</button>
-                <button onclick="sendKey('pgdn')">PgDn</button>
-                <button onclick="sendKey('esc')">Esc</button>
-                <button onclick="sendKey('win')">Win</button>
+
+                <!-- Row 3 -->
+                <button onclick="sendKey('enter')" style="grid-column: span 2;">↵ Enter</button>
             </div>
         </div>
 
         <div id="trackpad-view">
-            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #444; pointer-events: none;">
+            <div
+                style="position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: #444; pointer-events: none;">
                 Touch & Drag
             </div>
+            <div style="position: absolute; bottom: 10px; left: 10px; right: 10px; display: flex; gap: 10px;">
+                <button id="hold-btn" onclick="toggleHold()"
+                    style="background-color: #333; flex: 1; padding: 15px;">Hold Click</button>
+                <button onclick="sendKey('space')" style="background-color: #444; width: 80px;">Space</button>
+            </div>
         </div>
+
         <div class="mouse-buttons" id="mouse-buttons" style="display: none;">
             <div class="mouse-btn" onclick="sendClick('left')">Left</div>
             <div class="mouse-btn" onclick="sendClick('right')">Right</div>
@@ -190,7 +212,7 @@
         function switchTab(tab) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             event.target.classList.add('active');
-            
+
             if (tab === 'keyboard') {
                 document.getElementById('keyboard-view').style.display = 'flex';
                 document.getElementById('trackpad-view').style.display = 'none';
@@ -204,47 +226,29 @@
 
         // Keyboard
         const inputArea = document.getElementById('input-area');
-        
-        // We want to keep text in the box so user sees what they typed.
-        // But we only want to send the *new* character.
-        // Or we can just clear it on Enter?
-        // Let's try: Keep text, but if they backspace, we handle it.
-        
+
         inputArea.addEventListener('input', (e) => {
             if (e.inputType === 'insertText' && e.data) {
-                // Send just the new character
                 socket.emit('type_text', { text: e.data });
             } else if (e.inputType === 'deleteContentBackward') {
                 socket.emit('press_key', { key: 'backspace' });
             } else if (e.inputType === 'insertLineBreak') {
-                 socket.emit('press_key', { key: 'enter' });
-                 inputArea.value = ''; // Clear on Enter
+                socket.emit('press_key', { key: 'enter' });
+                inputArea.value = '';
             }
-            
-            // Do NOT clear inputArea.value here for normal typing, so user sees the text.
-            // Optional: Clear it if it gets too long?
+
             if (inputArea.value.length > 1000) {
                 inputArea.value = '';
             }
         });
-        
+
         function clearInput() {
             inputArea.value = '';
             inputArea.focus();
         }
-        
-        // Handle Enter key specially if needed (e.g. to clear box)
-        inputArea.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                // e.preventDefault(); // If we want to prevent newline in box
-                // socket.emit('press_key', { key: 'enter' });
-                // Let's let the input event handle it via insertLineBreak or just let it be.
-                // Actually, mobile keyboards often send 'Go' or 'Enter' as a keydown or input type.
-            }
-        });
 
-        function sendKey(key) { 
-            socket.emit('press_key', { key: key }); 
+        function sendKey(key) {
+            socket.emit('press_key', { key: key });
             if (navigator.vibrate) navigator.vibrate(10);
         }
 
@@ -253,8 +257,6 @@
             if (text) {
                 socket.emit('paste_text', { text: text });
                 if (navigator.vibrate) navigator.vibrate(20);
-                // Optional: clear after paste? Or keep it?
-                // inputArea.value = ''; 
             }
         }
 
@@ -276,9 +278,9 @@
             const y = e.touches[0].clientY;
             const dx = (x - lastX) * 2; // Sensitivity
             const dy = (y - lastY) * 2;
-            
+
             socket.emit('move_mouse', { dx: dx, dy: dy });
-            
+
             lastX = x;
             lastY = y;
             e.preventDefault();
@@ -293,6 +295,24 @@
             socket.emit('click_mouse', { button: btn });
         }
 
+        let isHolding = false;
+        function toggleHold() {
+            const btn = document.getElementById('hold-btn');
+            isHolding = !isHolding;
+
+            if (isHolding) {
+                btn.style.backgroundColor = '#28a745'; // Green
+                btn.textContent = 'Release';
+                socket.emit('hold_mouse', { action: 'down', button: 'left' });
+                if (navigator.vibrate) navigator.vibrate([50]);
+            } else {
+                btn.style.backgroundColor = '#333';
+                btn.textContent = 'Hold Click';
+                socket.emit('hold_mouse', { action: 'up', button: 'left' });
+                if (navigator.vibrate) navigator.vibrate([20]);
+            }
+        }
+
         // Prevent defaults
         document.querySelectorAll('button').forEach(btn => {
             btn.addEventListener('touchstart', (e) => {
@@ -302,4 +322,5 @@
         });
     </script>
 </body>
+
 </html>
