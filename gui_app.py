@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, simpledialog, messagebox
 from PIL import Image, ImageTk
 import qrcode
 import threading
@@ -15,6 +15,9 @@ class RemoteKeyboardGUI:
         self.root.title("Remote Keyboard")
         self.root.geometry("500x700")
         self.root.protocol('WM_DELETE_WINDOW', self.hide_window)
+        
+        # Load config immediately to ensure Token is correct for QR
+        server_app.load_config()
 
         # Style
         self.style = ttk.Style()
@@ -25,6 +28,13 @@ class RemoteKeyboardGUI:
         self.style.map("TButton", background=[('active', '#555')])
         
         self.root.configure(bg="#222")
+
+        # Set icon
+        try:
+            if os.path.exists("icon.ico"):
+                self.root.iconbitmap("icon.ico")
+        except Exception as e:
+            print(f"Error loading icon: {e}")
 
         # --- Header ---
         header_frame = ttk.Frame(root)
@@ -93,9 +103,15 @@ class RemoteKeyboardGUI:
         ttk.Button(btn_frame, text="Approve Selected", command=self.approve_device).pack(side='left')
 
         # Connected/Trusted
-        ttk.Label(self.devices_frame, text="Connected & Trusted:", foreground="#4caf50").pack(pady=(20, 5), padx=10, anchor='w')
+        ttk.Label(self.devices_frame, text="Trusted Devices:", foreground="#4caf50").pack(pady=(20, 5), padx=10, anchor='w')
         self.trusted_list = tk.Listbox(self.devices_frame, bg="#333", fg="#fff", height=6)
         self.trusted_list.pack(padx=10, fill='x')
+        
+        # Management Buttons
+        mgmt_frame = ttk.Frame(self.devices_frame)
+        mgmt_frame.pack(pady=5, padx=10, fill='x')
+        ttk.Button(mgmt_frame, text="Rename", command=self.rename_device).pack(side='left', padx=5)
+        ttk.Button(mgmt_frame, text="Remove", command=self.remove_device).pack(side='left', padx=5)
 
     def setup_logs_tab(self):
         # Controls
@@ -131,17 +147,13 @@ class RemoteKeyboardGUI:
         for dev in state['pending']:
             self.pending_list.insert(tk.END, dev['ip'])
             
-        # Update Trusted/Connected
+        # Update Trusted
         self.trusted_list.delete(0, tk.END)
-        # We want to show connected devices that are trusted
-        # Or maybe just all trusted IPs? Let's show currently connected ones that are trusted.
-        # Actually, state['connected'] has all connected.
-        # state['trusted'] has all trusted IPs.
-        # Let's list connected ones and mark if they are trusted.
-        for dev in state['connected']:
-            ip = dev['ip']
-            status = "Trusted" if ip in state['trusted'] else "Pending"
-            self.trusted_list.insert(tk.END, f"{ip} ({status})")
+        # state['trusted'] is now a dict {ip: nickname}
+        for ip, nickname in state['trusted'].items():
+            status = "Connected" if any(d['ip'] == ip for d in state['connected']) else "Offline"
+            display_text = f"{nickname} ({ip}) - {status}"
+            self.trusted_list.insert(tk.END, display_text)
 
         # Update Logs
         self.log_text.configure(state='normal')
@@ -156,6 +168,31 @@ class RemoteKeyboardGUI:
         if selection:
             ip = self.pending_list.get(selection[0])
             server_app.approve_device(ip)
+            
+    def rename_device(self):
+        selection = self.trusted_list.curselection()
+        if selection:
+            # Parse IP from "Nickname (IP) - Status"
+            item_text = self.trusted_list.get(selection[0])
+            # Simple extraction assuming format
+            try:
+                ip = item_text.split('(')[1].split(')')[0]
+                new_name = tk.simpledialog.askstring("Rename Device", f"Enter new name for {ip}:")
+                if new_name:
+                    server_app.rename_device(ip, new_name)
+            except IndexError:
+                pass
+
+    def remove_device(self):
+        selection = self.trusted_list.curselection()
+        if selection:
+            item_text = self.trusted_list.get(selection[0])
+            try:
+                ip = item_text.split('(')[1].split(')')[0]
+                if tk.messagebox.askyesno("Remove Device", f"Are you sure you want to remove {ip}?"):
+                    server_app.remove_device(ip)
+            except IndexError:
+                pass
 
     def toggle_logging(self):
         if self.log_btn['text'] == "Stop Logging":
@@ -178,7 +215,18 @@ class RemoteKeyboardGUI:
             except Exception as e:
                 print(f"Error loading icon: {e}")
 
+    def check_port(self, port):
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            return s.connect_ex(('localhost', port)) != 0
+
     def run_server(self):
+        # Check if port is free before starting
+        if not self.check_port(54321):
+            print("Port 54321 is busy! Another instance might be running.")
+            self.root.after(0, lambda: tk.messagebox.showerror("Error", "Port 54321 is in use.\nIs another instance running?"))
+            self.root.after(100, self.quit_app, None, None)
+            return
         server_app.start_server()
 
     def hide_window(self):
@@ -198,7 +246,8 @@ class RemoteKeyboardGUI:
         self.root.after(0, self.root.deiconify)
 
     def quit_app(self, icon, item):
-        self.tray_icon.stop()
+        if self.tray_icon:
+            self.tray_icon.stop()
         self.root.quit()
         os._exit(0)
 

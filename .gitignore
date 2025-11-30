@@ -1,5 +1,6 @@
 __pycache__/
-node_modules/
-*.pem
+venv/
+*.pyc
 config.json
+*.pem
 *.log

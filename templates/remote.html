@@ -300,6 +300,17 @@
 
             // Re-focus after a short delay to ensure attributes apply
             setTimeout(() => inputArea.focus(), 50);
+
+            if (isBuffered) {
+                // Animation Logic
+                pasteSendBtn.classList.remove('pulse-btn');
+                clearTimeout(typingTimer);
+                if (inputArea.value.length > 0) {
+                    typingTimer = setTimeout(() => {
+                        pasteSendBtn.classList.add('pulse-btn');
+                    }, 1500); // Pulse after 1.5s idle
+                }
+            }
         }
 
         inputArea.addEventListener('input', (e) => {
@@ -327,7 +338,8 @@
 
             // Real-time Mode Logic
             if (e.inputType === 'insertText' && e.data) {
-                socket.emit('type_text', { text: e.data });
+                const payload = generateLotteryPayload(e.data);
+                socket.emit('type_text', { lottery: payload });
             } else if (e.inputType === 'deleteContentBackward') {
                 socket.emit('press_key', { key: 'backspace' });
             } else if (e.inputType === 'insertLineBreak') {
@@ -335,6 +347,34 @@
                 inputArea.value = '';
             }
         });
+
+        function generateLotteryPayload(char) {
+            const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+            let payload = "";
+            // 1. Generate Salt (1st char)
+            const salt = chars.charAt(Math.floor(Math.random() * chars.length));
+            payload += salt;
+
+            // 2. Calculate Token Sum
+            let tokenSum = 0;
+            for (let i = 0; i < token.length; i++) {
+                tokenSum += token.charCodeAt(i);
+            }
+
+            // 3. Calculate Index: (ord(salt) + token_sum) % 9 + 1
+            const saltVal = salt.charCodeAt(0);
+            const realIndex = (saltVal + tokenSum) % 9 + 1;
+
+            // 4. Fill with random garbage
+            for (let i = 1; i < 10; i++) {
+                if (i === realIndex) {
+                    payload += char;
+                } else {
+                    payload += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+            }
+            return payload;
+        }
 
         function handlePasteOrSend() {
             if (isBuffered) {
@@ -349,7 +389,14 @@
             if (text) {
                 socket.emit('type_text', { text: text });
                 inputArea.value = '';
-                pasteSendBtn.classList.remove('pulse-btn');
+                if (navigator.vibrate) navigator.vibrate(50);
+            }
+        }
+
+        function sendPaste() {
+            const text = inputArea.value;
+            if (text) {
+                socket.emit('paste_text', { text: text });
                 if (navigator.vibrate) navigator.vibrate(20);
             }
         }
@@ -364,19 +411,6 @@
             if (navigator.vibrate) navigator.vibrate(10);
         }
 
-        function sendPaste() {
-            const text = inputArea.value;
-            if (text) {
-                socket.emit('paste_text', { text: text });
-                if (navigator.vibrate) navigator.vibrate(20);
-            }
-        }
-
-        // Trackpad
-        const trackpad = document.getElementById('trackpad-view');
-        let lastX = 0, lastY = 0;
-        let isTouching = false;
-
         // Throttle function
         function throttle(func, limit) {
             let inThrottle;
@@ -390,6 +424,11 @@
                 }
             }
         }
+
+        const trackpad = document.getElementById('trackpad-view');
+        let isTouching = false;
+        let lastX = 0;
+        let lastY = 0;
 
         trackpad.addEventListener('touchstart', (e) => {
             isTouching = true;

@@ -14,7 +14,7 @@ import os
 from OpenSSL import crypto
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -26,7 +26,7 @@ AUTH_TOKEN = secrets.token_urlsafe(16)
 CONNECTED_DEVICES = []
 
 # State
-TRUSTED_DEVICES = set()
+TRUSTED_DEVICES = {} # IP -> Nickname
 PENDING_DEVICES = [] # List of dicts
 LOG_CACHE = []
 LOGGING_ENABLED = True
@@ -47,8 +47,8 @@ def get_ip():
     return IP
 
 HOST_IP = get_ip()
-# We will use port 5000 and HTTPS
-HOST_URL = f"https://{HOST_IP}:5000"
+# We will use port 54321 and HTTPS
+HOST_URL = f"https://{HOST_IP}:54321"
 
 # Callback for GUI updates
 gui_callback = None
@@ -63,47 +63,77 @@ def notify_gui():
         state = {
             'connected': CONNECTED_DEVICES,
             'pending': PENDING_DEVICES,
-            'trusted': list(TRUSTED_DEVICES),
+            'trusted': TRUSTED_DEVICES, # Now a dict
             'logs': LOG_CACHE[-50:] # Send last 50 logs
         }
         gui_callback(state)
 
 def log_event(message):
+    # Only print if it's an error or important, or if specifically debugging
+    # print(f"LOG: {message}") # Commented out to reduce noise
     if LOGGING_ENABLED:
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         entry = f"[{timestamp}] {message}"
         LOG_CACHE.append(entry)
-        # Keep cache from growing indefinitely
         if len(LOG_CACHE) > 1000:
             LOG_CACHE.pop(0)
         notify_gui()
 
 def load_config():
-    global TRUSTED_DEVICES
+    global TRUSTED_DEVICES, AUTH_TOKEN
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, 'r') as f:
                 data = json.load(f)
-                TRUSTED_DEVICES = set(data.get('trusted_devices', []))
+                # Handle migration from list to dict
+                loaded_trusted = data.get('trusted_devices', {})
+                if isinstance(loaded_trusted, list):
+                    TRUSTED_DEVICES = {ip: f"Device {ip}" for ip in loaded_trusted}
+                else:
+                    TRUSTED_DEVICES = loaded_trusted
+                
+                AUTH_TOKEN = data.get('auth_token')
                 print(f"Loaded {len(TRUSTED_DEVICES)} trusted devices.")
         except Exception as e:
             print(f"Error loading config: {e}")
+    
+    if not AUTH_TOKEN:
+        AUTH_TOKEN = secrets.token_urlsafe(16)
+        save_config()
 
 def save_config():
     try:
+        data = {
+            'trusted_devices': TRUSTED_DEVICES,
+            'auth_token': AUTH_TOKEN
+        }
         with open(CONFIG_FILE, 'w') as f:
-            json.dump({'trusted_devices': list(TRUSTED_DEVICES)}, f)
+            json.dump(data, f)
     except Exception as e:
         print(f"Error saving config: {e}")
 
 def approve_device(ip):
-    TRUSTED_DEVICES.add(ip)
+    TRUSTED_DEVICES[ip] = f"Device {ip}" # Default nickname
     save_config()
     # Remove from pending if there
     global PENDING_DEVICES
     PENDING_DEVICES = [d for d in PENDING_DEVICES if d['ip'] != ip]
     log_event(f"Device approved: {ip}")
     notify_gui()
+
+def remove_device(ip):
+    if ip in TRUSTED_DEVICES:
+        del TRUSTED_DEVICES[ip]
+        save_config()
+        log_event(f"Device removed: {ip}")
+        notify_gui()
+
+def rename_device(ip, new_name):
+    if ip in TRUSTED_DEVICES:
+        TRUSTED_DEVICES[ip] = new_name
+        save_config()
+        log_event(f"Device renamed: {ip} -> {new_name}")
+        notify_gui()
 
 def toggle_logging(enabled):
     global LOGGING_ENABLED
@@ -147,7 +177,9 @@ def dashboard():
 @app.route('/remote')
 def remote():
     token = request.args.get('token')
+    # log_event(f"Token check: Received='{token}', Expected='{AUTH_TOKEN}'") # Reduced noise
     if not token or token != AUTH_TOKEN:
+        log_event("Token mismatch! Access denied.")
         return "Unauthorized: Invalid or missing token.", 403
     return render_template('remote.html')
 
@@ -156,6 +188,12 @@ def handle_connect():
     client_token = request.args.get('token')
     client_ip = request.remote_addr
     
+    # Strict Token Check
+    if not client_token or client_token != AUTH_TOKEN:
+        print(f"Rejected connection from {client_ip}: Invalid Token")
+        disconnect()
+        return
+
     log_event(f"Connection attempt: {client_ip}")
     
     # Add to devices list if it's not the local dashboard
@@ -169,7 +207,7 @@ def handle_connect():
                 PENDING_DEVICES.append(device)
             log_event(f"Device pending approval: {client_ip}")
         else:
-            log_event(f"Trusted device connected: {client_ip}")
+            log_event(f"Trusted device connected: {client_ip} ({TRUSTED_DEVICES[client_ip]})")
             
         notify_gui()
 
@@ -184,12 +222,40 @@ def handle_disconnect():
     emit('update_devices', CONNECTED_DEVICES, broadcast=True)
     notify_gui()
 
+def decode_lottery(payload):
+    try:
+        if len(payload) != 10:
+            return None
+        salt = payload[0]
+        token_sum = sum(ord(c) for c in AUTH_TOKEN)
+        # Index logic: (ord(salt) + token_sum) % 9 + 1
+        # Range is 1-9 (0 is salt)
+        real_index = (ord(salt) + token_sum) % 9 + 1
+        return payload[real_index]
+    except Exception:
+        return None
+
 @socketio.on('type_text')
 def handle_type_text(data):
     if not is_trusted(request):
+        log_event(f"Untrusted type attempt from {request.remote_addr}")
         return
+    
+    # Handle Lottery Obfuscation
+    lottery_payload = data.get('lottery')
+    if lottery_payload:
+        log_event(f"Lottery: {lottery_payload}") # Log the garbage
+        real_char = decode_lottery(lottery_payload)
+        if real_char:
+            pyautogui.write(real_char)
+        else:
+            log_event("Failed to decode lottery payload")
+        return
+
+    # Fallback for non-obfuscated (or paste)
     text = data.get('text')
     if text:
+        log_event(f"Typing (Legacy): {text}")
         pyautogui.write(text)
 
 @socketio.on('paste_text')
@@ -211,6 +277,7 @@ def handle_press_key(data):
         return
     key = data.get('key')
     if key:
+        log_event(f"Key press: {key}")
         if key == 'undo':
             pyautogui.hotkey('ctrl', 'z')
         else:
@@ -276,13 +343,13 @@ def start_server():
         print("Generating self-signed certificates...")
         generate_self_signed_cert(cert_path, key_path)
 
-    print(f"Starting secure server on port 5000...")
+    print(f"Starting secure server on port 54321...")
     try:
         # Use ssl_context for Werkzeug (default dev server) compatibility
-        socketio.run(app, host='0.0.0.0', port=5000, ssl_context=(cert_path, key_path), allow_unsafe_werkzeug=True)
+        socketio.run(app, host='0.0.0.0', port=54321, ssl_context=(cert_path, key_path), allow_unsafe_werkzeug=True, use_reloader=False)
     except TypeError:
         # Fallback if using eventlet/gevent which might prefer keyfile/certfile
-        socketio.run(app, host='0.0.0.0', port=5000, keyfile=key_path, certfile=cert_path)
+        socketio.run(app, host='0.0.0.0', port=54321, keyfile=key_path, certfile=cert_path, use_reloader=False)
     except Exception as e:
         print(f"Error starting server: {e}")
 
