@@ -1,0 +1,7 @@
+STABLE LOCAL BUILD v1.0
+Date: 2025-12-03
+Status: Fully Functional
+Notes:
+- Port: 5000
+- Socket.io: Local (static/socket.io.js)
+- Logging: Standard (no file logging)
