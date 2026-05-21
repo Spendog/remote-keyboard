@@ -34,6 +34,12 @@ Want a fancy icon on your desktop?
 2.  Select a PNG image when prompted.
 3.  A shortcut will be created on your Desktop. Right-click and "Pin to Taskbar" if desired!
 
+## Security & Privacy
+
+*   **Local Network Only**: This application is designed strictly for local Wi-Fi networks.
+*   **Encrypted Traffic**: All keystrokes, clipboard text, and mouse movements are sent over a secure HTTPS connection. This means your typed text and sensitive data are **encrypted** and cannot be read by packet sniffers.
+*   **Local Visibility**: Be aware that because this runs openly on your local network, other users on the same Wi-Fi could potentially intercept the initial connection token or see that a device is connected, but they cannot read your encrypted keystrokes.
+
 ## Troubleshooting
 
 *   **Firewall**: If you can't connect, ensure "Python" is allowed through your Windows Firewall on Private Networks.
