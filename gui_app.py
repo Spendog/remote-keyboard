@@ -129,6 +129,19 @@ class RemoteKeyboardGUI:
         ttk.Label(self.settings_frame, text="Customization").pack(pady=10, padx=10, anchor='w')
         ttk.Button(self.settings_frame, text="Change App Icon", command=self.change_icon).pack(padx=10, anchor='w')
 
+        ttk.Separator(self.settings_frame, orient='horizontal').pack(fill='x', pady=10, padx=10)
+        
+        ttk.Label(self.settings_frame, text="Advanced").pack(pady=(0, 10), padx=10, anchor='w')
+        self.debug_var = tk.BooleanVar(value=False)
+        self.debug_cb = ttk.Checkbutton(
+            self.settings_frame, text="Enable Debug Mode (Advanced Logging)",
+            variable=self.debug_var, command=self.toggle_debug
+        )
+        self.debug_cb.pack(padx=10, anchor='w')
+
+    def toggle_debug(self):
+        server_app.set_debug_mode(self.debug_var.get())
+
     def generate_qr(self):
         url = f"{server_app.HOST_URL}/remote?token={server_app.AUTH_TOKEN}"
         qr = qrcode.QRCode(box_size=8, border=2)
@@ -162,6 +175,21 @@ class RemoteKeyboardGUI:
             self.log_text.insert(tk.END, entry + "\n")
         self.log_text.see(tk.END)
         self.log_text.configure(state='disabled')
+        
+        # Update debug cb if needed
+        if 'debug_mode' in state:
+            if self.debug_var.get() != state['debug_mode']:
+                self.debug_var.set(state['debug_mode'])
+        
+        # Refresh QR + URL if IP changed (e.g. after startup health check)
+        current_url = f"{server_app.HOST_URL}/remote?token={server_app.AUTH_TOKEN}"
+        if not hasattr(self, '_last_url') or self._last_url != current_url:
+            self._last_url = current_url
+            self.generate_qr()
+            self.url_entry.configure(state='normal')
+            self.url_entry.delete(0, tk.END)
+            self.url_entry.insert(0, current_url)
+            self.url_entry.configure(state='readonly')
 
     def approve_device(self):
         selection = self.pending_list.curselection()
@@ -254,4 +282,12 @@ class RemoteKeyboardGUI:
 if __name__ == "__main__":
     root = tk.Tk()
     app = RemoteKeyboardGUI(root)
-    root.mainloop()
+    try:
+        root.mainloop()
+    except KeyboardInterrupt:
+        print("Application stopped by user (KeyboardInterrupt).")
+        try:
+            root.quit()
+        except:
+            pass
+        sys.exit(0)
